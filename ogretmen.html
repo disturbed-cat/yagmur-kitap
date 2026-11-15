@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Öğretmen Paneli · Kitap Ekle</title>
+<style>
+  :root { --bg:#f3f1ec; --card:#fff; --line:#d9d5cc; --ink:#23211e; --muted:#77726a; --accent:#1f5fbf; --ok:#1a8a4a; --err:#c0392b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:32px 20px 60px; }
+  h1 { font-size:26px; margin:0 0 4px; }
+  h2 { font-size:17px; margin:0 0 12px; }
+  p.sub { color:var(--muted); margin:0 0 24px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
+  label { display:block; font-weight:600; font-size:14px; margin:14px 0 6px; }
+  label:first-of-type { margin-top:0; }
+  input[type=text], input[type=password], select { width:100%; font:inherit; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:inherit; }
+  input[type=file] { font:inherit; width:100%; }
+  .row { display:flex; gap:10px; align-items:center; }
+  .row > * { flex:1; }
+  .row > button { flex:none; }
+  button { font:inherit; font-weight:600; padding:10px 18px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
+  button.ghost { background:#fff; color:var(--accent); }
+  button:disabled { opacity:.45; cursor:default; }
+  .hint { color:var(--muted); font-size:13px; margin-top:6px; }
+  #bar { height:10px; background:#e8e5df; border-radius:5px; overflow:hidden; margin:14px 0 8px; }
+  #bar i { display:block; height:100%; width:0; background:var(--accent); transition:width .2s; }
+  #msg { font-size:14px; min-height:20px; }
+  #msg.ok { color:var(--ok); font-weight:600; } #msg.err { color:var(--err); font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td, th { text-align:left; padding:8px 6px; border-bottom:1px solid #eeebe5; }
+  th { color:var(--muted); font-weight:600; }
+  .tag { font-size:12px; padding:2px 8px; border-radius:10px; background:#e3f3e9; color:var(--ok); }
+  .tag.warn { background:#fbeee0; color:#b3541e; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kitap Ekle</h1>
+  <p class="sub">PDF'i sayfa sayfa görsele çevirir ve Drive'daki <b>_sayfalar</b> klasörüne yükler.</p>
+
+  <section>
+    <h2>1 · Giriş</h2>
+    <label for="key">Öğretmen şifresi</label>
+    <div class="row">
+      <input id="key" type="password" autocomplete="off">
+      <button id="login">Giriş yap</button>
+    </div>
+    <div id="loginMsg" class="hint"></div>
+  </section>
+
+  <section id="upload" hidden>
+    <h2>2 · Kitapları hazırla</h2>
+    <label for="width">Görsel kalitesi</label>
+    <select id="width">
+      <option value="1600">Normal · 1600 piksel genişlik</option>
+      <option value="2000" selected>Yüksek · 2000 piksel genişlik (önerilen)</option>
+      <option value="2600">Çok yüksek · 2600 piksel genişlik</option>
+    </select>
+    <div class="hint">Küçük yazılı, sıkışık sayfalarda "Çok yüksek" seç. Yükleme süresi ve iPad'de kaplanan alan artar.</div>
+
+    <label>Drive klasöründeki PDF'ler</label>
+    <table><thead><tr><th></th><th>PDF</th><th>Boyut</th><th>Durum</th></tr></thead><tbody id="pdfs"></tbody></table>
+    <div style="margin-top:14px" class="row">
+      <button id="startDrive" disabled>Seçilenleri çevir</button>
+      <span></span>
+    </div>
+
+    <details style="margin-top:18px">
+      <summary style="cursor:pointer;font-weight:600;font-size:14px">Bilgisayardaki bir PDF'i yükle</summary>
+      <label for="file" style="margin-top:12px">PDF dosyası</label>
+      <input id="file" type="file" accept="application/pdf,.pdf">
+      <label for="name">Kitap adı (öğrencinin göreceği ad)</label>
+      <input id="name" type="text">
+      <div style="margin-top:14px" class="row">
+        <button id="startFile" class="ghost" disabled>Bu dosyayı çevir</button>
+        <span></span>
+      </div>
+    </details>
+
+    <div id="bar"><i></i></div>
+    <div id="msg"></div>
+    <div class="hint">İşlem bitene kadar bu sekmeyi açık tut. Yarıda kesilirse yeniden başlat; yüklenmiş sayfalar atlanır.</div>
+  </section>
+
+  <section id="list" hidden>
+    <h2>Hazırlanan kitaplar</h2>
+    <table><thead><tr><th>Kitap</th><th>Sayfa</th><th>Durum</th></tr></thead><tbody id="books"></tbody></table>
+    <div class="hint">Bir kitabı farklı kalitede yeniden yüklemek için önce Drive'da <b>_sayfalar</b> içindeki klasörünü sil.</div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  const API = 'https://script.google.com/macros/s/AKfycbzPgC4ouLiU2Zn5x6BqqQB3CJZg8KmW-YIyQ-yjKZ1ll4AgSAvE-zx6qyrxVWN3od7E/exec';
+  const PARALLEL = 3, RETRIES = 4, JPEG_QUALITY = 0.9;
+  const $ = function (id) { return document.getElementById(id); };
+  let key = '', busy = false;
+
+  if (window.pdfjsLib)
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  const ERRORS = { auth: 'Şifre yanlış.', forbidden: 'Bu işlem için öğretmen şifresi gerekli.' };
+
+  async function api(body) {
+    body.key = key;
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error('Sunucu hatası (' + r.status + ')');
+    const j = await r.json();
+    if (!j.ok) throw new Error(ERRORS[j.error] || j.error || 'Bilinmeyen hata');
+    return j;
+  }
+  async function apiRetry(body) {
+    let last;
+    for (let i = 0; i < RETRIES; i++) {
+      try { return await api(body); }
+      catch (e) { last = e; if (/Şifre|öğretmen/.test(e.message)) break; await new Promise(function (r) { setTimeout(r, 1500 * (i + 1)); }); }
+    }
+    throw last;
+  }
+
+  function setMsg(text, cls) { const m = $('msg'); m.textContent = text; m.className = cls || ''; }
+  function setBar(f) { $('bar').firstElementChild.style.width = Math.round(f * 100) + '%'; }
+
+  const bookName = function (pdfName) { return pdfName.replace(/\.pdf$/i, '').replace(/[\/\\]/g, '-').trim(); };
+  const mb = function (bytes) { return (bytes / 1048576).toFixed(bytes < 10485760 ? 1 : 0) + ' MB'; };
+  let drivePdfs = [];
+
+  function tag(text, warn) {
+    const s = document.createElement('span');
+    s.className = 'tag' + (warn ? ' warn' : ''); s.textContent = text; return s;
+  }
+  function syncButtons() {
+    $('startDrive').disabled = busy || !document.querySelector('#pdfs input:checked');
+    $('startFile').disabled = busy || !$('file').files[0];
+  }
+
+  async function refreshBooks() {
+    const res = await Promise.all([api({ action: 'books' }), api({ action: 'pdfs' })]);
+    const books = res[0].books; drivePdfs = res[1].pdfs;
+    const byName = {}; books.forEach(function (b) { byName[b.name] = b; });
+
+    const pt = $('pdfs'); pt.textContent = '';
+    if (!drivePdfs.length) {
+      const td = pt.insertRow().insertCell(); td.colSpan = 4; td.textContent = 'Klasörde PDF bulunamadı.'; td.style.color = 'var(--muted)';
+    }
+    drivePdfs.forEach(function (p, i) {
+      const b = byName[bookName(p.name)], tr = pt.insertRow();
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = i;
+      cb.checked = !(b && b.ready); cb.disabled = !!(b && b.ready); cb.onchange = syncButtons;
+      tr.insertCell().appendChild(cb);
+      tr.insertCell().textContent = p.name;
+      tr.insertCell().textContent = mb(p.size);
+      tr.insertCell().appendChild(b ? tag(b.ready ? 'Hazır' : 'Yarım kaldı', !b.ready) : tag('Çevrilmedi', true));
+    });
+
+    const tb = $('books'); tb.textContent = '';
+    if (!books.length) {
+      const td = tb.insertRow().insertCell(); td.colSpan = 3; td.textContent = 'Henüz kitap yok.'; td.style.color = 'var(--muted)';
+    }
+    books.forEach(function (b) {
+      const tr = tb.insertRow();
+      tr.insertCell().textContent = b.name;
+      tr.insertCell().textContent = b.pages;
+      tr.insertCell().appendChild(tag(b.ready ? 'Hazır' : 'Yarım kaldı', !b.ready));
+    });
+    $('list').hidden = false; syncButtons();
+  }
+
+  $('login').onclick = async function () {
+    key = $('key').value.trim();
+    const m = $('loginMsg'); m.textContent = 'Bağlanılıyor…'; m.style.color = '';
+    try {
+      const j = await api({ action: 'login' });
+      if (j.role !== 'ogretmen') throw new Error('Bu öğrenci şifresi. Öğretmen şifresini gir.');
+      m.textContent = 'Giriş yapıldı ✓'; m.style.color = 'var(--ok)';
+      $('upload').hidden = false;
+      await refreshBooks();
+    } catch (e) { m.textContent = e.message; m.style.color = 'var(--err)'; }
+  };
+  $('key').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('login').click(); });
+
+  $('file').onchange = function () {
+    const f = $('file').files[0];
+    if (f) $('name').value = f.name.replace(/\.pdf$/i, '');
+    syncButtons();
+  };
+
+  function canvasToBase64(canvas) {
+    return new Promise(function (res, rej) {
+      canvas.toBlob(function (blob) {
+        if (!blob) return rej(new Error('Görsel oluşturulamadı.'));
+        const fr = new FileReader();
+        fr.onload = function () { res(String(fr.result).split(',')[1]); };
+        fr.onerror = function () { rej(fr.error); };
+        fr.readAsDataURL(blob);
+      }, 'image/jpeg', JPEG_QUALITY);
+    });
+  }
+
+  /* Drive'daki PDF'i parça parça indirir. */
+  async function downloadPdf(p, label) {
+    const CHUNK = 6 * 1024 * 1024, buf = new Uint8Array(p.size);
+    for (let s = 0; s < p.size; s += CHUNK) {
+      setBar(s / p.size); setMsg(label + 'Drive\'dan indiriliyor: ' + mb(s) + ' / ' + mb(p.size));
+      const e = Math.min(p.size, s + CHUNK) - 1;
+      const j = await apiRetry({ action: 'pdfChunk', id: p.id, start: s, end: e });
+      const bin = atob(j.data);
+      if (bin.length !== e - s + 1) throw new Error('Eksik veri indi.');
+      for (let i = 0; i < bin.length; i++) buf[s + i] = bin.charCodeAt(i);
+    }
+    return buf;
+  }
+
+  /* PDF verisini sayfa sayfa görsele çevirip yükler. */
+  async function convert(data, name, targetW, label) {
+    setBar(0); setMsg(label + 'PDF açılıyor…');
+    const pdf = await pdfjsLib.getDocument({ data: data }).promise;
+    try {
+      const total = pdf.numPages;
+      const first = (await pdf.getPage(1)).getViewport({ scale: 1 });
+      const book = await apiRetry({ action: 'createBook', name: name, pages: total,
+        w: targetW, h: Math.round(targetW * first.height / first.width) });
+      const have = new Set(book.existing || []);
+
+      const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { alpha: false });
+      const running = new Set(); let done = 0, failed = null;
+      const tick = function () { setBar(done / total); setMsg(label + 'Yükleniyor: ' + done + ' / ' + total + ' sayfa'); };
+
+      for (let n = 1; n <= total && !failed; n++) {
+        if (have.has(n)) { done++; tick(); continue; }
+        const page = await pdf.getPage(n);
+        const vp0 = page.getViewport({ scale: 1 });
+        const vp = page.getViewport({ scale: targetW / vp0.width });
+        canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        const b64 = await canvasToBase64(canvas);
+        page.cleanup();
+
+        const p = apiRetry({ action: 'uploadPage', book: book.id, n: n, data: b64 })
+          .then(function () { done++; tick(); })
+          .catch(function (e) { failed = e; })
+          .finally(function () { running.delete(p); });
+        running.add(p);
+        if (running.size >= PARALLEL) await Promise.race(running);
+      }
+      await Promise.all(running);
+      if (failed) throw failed;
+      await apiRetry({ action: 'finishBook', book: book.id });
+      return total;
+    } finally { pdf.destroy(); }
+  }
+
+  /* İş listesi: [{ name, load: () => veri }] — sırayla işler, hata olursa sonrakine geçer. */
+  async function run(jobs) {
+    if (busy || !jobs.length) return;
+    if (!window.pdfjsLib) return setMsg('PDF kütüphanesi yüklenemedi. İnternet bağlantını kontrol edip sayfayı yenile.', 'err');
+    busy = true; syncButtons();
+    const targetW = +$('width').value, okList = [], errList = [];
+    for (let i = 0; i < jobs.length; i++) {
+      const job = jobs[i], label = (jobs.length > 1 ? '[' + (i + 1) + '/' + jobs.length + '] ' : '') + job.name + ' · ';
+      try {
+        const pages = await convert(await job.load(label), job.name, targetW, label);
+        okList.push(job.name + ' (' + pages + ' sayfa)');
+      } catch (e) { errList.push(job.name + ': ' + e.message); }
+    }
+    busy = false;
+    try { await refreshBooks(); } catch (e) { syncButtons(); }
+    if (errList.length) setMsg((okList.length ? 'Tamamlanan: ' + okList.join(', ') + '. ' : '') +
+      'Hata — ' + errList.join(' | ') + ' — Yeniden başlatırsan kaldığı yerden devam eder.', 'err');
+    else { setBar(1); setMsg('Tamamlandı ✓  ' + okList.join(', '), 'ok'); }
+  }
+
+  $('startDrive').onclick = function () {
+    const jobs = [];
+    document.querySelectorAll('#pdfs input:checked').forEach(function (cb) {
+      const p = drivePdfs[+cb.value];
+      jobs.push({ name: bookName(p.name), load: function (label) { return downloadPdf(p, label); } });
+    });
+    run(jobs);
+  };
+  $('startFile').onclick = function () {
+    const file = $('file').files[0], name = bookName($('name').value);
+    if (!file || !name) return;
+    run([{ name: name, load: function () { return file.arrayBuffer(); } }]);
+  };
+
+  window.addEventListener('beforeunload', function (e) { if (busy) { e.preventDefault(); e.returnValue = ''; } });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kitaplarım">
+<title>Kitaplarım</title>
+<style>
+  :root {
+    --bg: #e7e4de; --bar: #fbfaf8; --line: #d6d2ca; --ink: #23211e; --muted: #77726a;
+    --accent: #1f5fbf; --accent-soft: #dfe9f8;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--ink);
+    font: 15px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+  #app { display: flex; flex-direction: column; height: 100%; }
+
+  #bar { display: flex; align-items: center; gap: 14px; padding: 8px 12px; background: var(--bar);
+    border-bottom: 1px solid var(--line); overflow-x: auto; white-space: nowrap; flex: none;
+    scrollbar-width: none; }
+  #bar::-webkit-scrollbar { display: none; }
+  .group { display: flex; align-items: center; gap: 4px; flex: none; }
+  .sep { width: 1px; align-self: stretch; background: var(--line); flex: none; }
+  button { font: inherit; color: inherit; background: transparent; border: 1px solid transparent;
+    border-radius: 9px; min-width: 42px; height: 42px; padding: 0 12px; cursor: pointer; flex: none; }
+  button:active { background: #ece9e3; }
+  button:disabled { opacity: .35; cursor: default; }
+  button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .icon { font-size: 22px; padding: 0; }
+  #pageLabel { min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .swatch { width: 42px; padding: 0; display: grid; place-items: center; }
+  .swatch i { width: 24px; height: 24px; border-radius: 50%; display: block; background: var(--c); }
+  .swatch.on { background: transparent; border-color: transparent; }
+  .swatch.on i { box-shadow: 0 0 0 3px var(--bar), 0 0 0 5px var(--c); }
+  .size { width: 42px; padding: 0; display: grid; place-items: center; }
+  .size i { display: block; border-radius: 50%; background: currentColor; width: var(--d); height: var(--d); }
+  #status { margin-left: auto; color: var(--muted); font-size: 13px; flex: none; padding-left: 8px; }
+  #status.warn { color: #b3541e; }
+
+  #stage { position: relative; flex: 1; overflow: hidden; touch-action: none; cursor: crosshair; }
+  #page { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.18), 0 8px 28px rgba(0,0,0,.12); pointer-events: none; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: rgba(35,33,30,.86);
+    color: #fff; padding: 9px 14px; border-radius: 10px; font-size: 13px; pointer-events: none;
+    transition: opacity .4s; max-width: calc(100% - 24px); white-space: normal; text-align: center; }
+  #hint.hide { opacity: 0; }
+
+  [hidden] { display: none !important; }
+  input { font: inherit; color: inherit; -webkit-user-select: text; user-select: text; }
+  .screen { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .center { min-height: 100%; display: grid; place-items: center; padding: 24px; }
+  .card { background: var(--bar); border: 1px solid var(--line); border-radius: 16px; padding: 28px; width: 100%; max-width: 380px; }
+  .card h1 { margin: 0 0 18px; font-size: 24px; }
+  .card input { width: 100%; height: 48px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; margin-bottom: 12px; }
+  .primary { width: 100%; height: 48px; background: var(--accent); color: #fff; font-weight: 600; border-radius: 10px; }
+  .primary:active { background: #184c99; }
+  .note { color: var(--muted); font-size: 13px; min-height: 18px; margin-top: 10px; }
+  .note.err { color: #c0392b; }
+  #libHead { display: flex; align-items: center; justify-content: space-between; max-width: 900px; margin: 0 auto; padding: 28px 20px 8px; }
+  #libHead h1 { margin: 0; font-size: 28px; }
+  #libNote { max-width: 900px; margin: 0 auto; padding: 0 20px; }
+  #bookGrid { max-width: 900px; margin: 0 auto; padding: 12px 20px 40px; display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  .book { height: auto; min-height: 110px; text-align: left; white-space: normal; padding: 18px; background: var(--bar);
+    border: 1px solid var(--line); border-radius: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .book b { font-size: 17px; line-height: 1.25; }
+  .book span { color: var(--muted); font-size: 13px; }
+  #pageNo { width: 58px; height: 38px; text-align: center; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+  #pageNo::-webkit-outer-spin-button, #pageNo::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  #pageCount { color: var(--muted); font-variant-numeric: tabular-nums; padding-right: 4px; }
+  #loading { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 12px;
+    color: var(--muted); pointer-events: none; text-align: center; padding: 20px; }
+  #loading button { pointer-events: auto; border-color: var(--line); background: var(--bar); }
+</style>
+</head>
+<body>
+<div id="login" class="screen" hidden><div class="center"><div class="card">
+  <h1>Kitaplarım</h1>
+  <input id="keyInput" type="password" placeholder="Şifre" autocomplete="current-password">
+  <button id="loginBtn" class="primary">Giriş yap</button>
+  <div id="loginNote" class="note"></div>
+</div></div></div>
+
+<div id="library" class="screen" hidden>
+  <div id="libHead"><h1>Kitaplarım</h1><button id="logout">Çıkış</button></div>
+  <div id="libNote" class="note"></div>
+  <div id="bookGrid"></div>
+</div>
+
+<div id="app" hidden>
+  <div id="bar">
+    <div class="group">
+      <button id="back">‹ Kitaplar</button>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <button id="prev" class="icon" aria-label="Önceki sayfa">‹</button>
+      <input id="pageNo" type="number" inputmode="numeric" min="1" aria-label="Sayfa numarası">
+      <span id="pageCount">/ 1</span>
+      <button id="next" class="icon" aria-label="Sonraki sayfa">›</button>
+    </div>
+    <div class="sep"></div>
+    <div class="group" id="tools">
+      <button data-tool="pen">Kalem</button>
+      <button data-tool="hl">Fosforlu</button>
+      <button data-tool="eraser">Silgi</button>
+    </div>
+    <div class="sep"></div>
+    <div class="group" id="colors">
+      <button class="swatch" data-color="#1b1b1b" style="--c:#1b1b1b" aria-label="Siyah"><i></i></button>
+      <button class="swatch" data-color="#1557c0" style="--c:#1557c0" aria-label="Mavi"><i></i></button>
+      <button class="swatch" data-color="#d02b2b" style="--c:#d02b2b" aria-label="Kırmızı"><i></i></button>
+      <button class="swatch" data-color="#1a8a4a" style="--c:#1a8a4a" aria-label="Yeşil"><i></i></button>
+    </div>
+    <div class="group" id="sizes">
+      <button class="size" data-size="0" style="--d:5px" aria-label="İnce"><i></i></button>
+      <button class="size" data-size="1" style="--d:9px" aria-label="Orta"><i></i></button>
+      <button class="size" data-size="2" style="--d:14px" aria-label="Kalın"><i></i></button>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <button id="undo" class="icon" aria-label="Geri al">↶</button>
+      <button id="redo" class="icon" aria-label="Yinele">↷</button>
+      <button id="clear">Temizle</button>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <button id="fit">Sığdır</button>
+      <button id="finger">Parmakla çiz</button>
+    </div>
+    <span id="status"></span>
+  </div>
+  <div id="stage">
+    <img id="page" alt="" draggable="false">
+    <canvas id="ink"></canvas>
+    <canvas id="live"></canvas>
+    <div id="loading" hidden><span id="loadText"></span><button id="retry" hidden>Yeniden dene</button></div>
+    <div id="hint" class="hide">Kalemle yaz · tek parmakla kaydır · iki parmakla yakınlaştır</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const API = 'https://script.google.com/macros/s/AKfycbzPgC4ouLiU2Zn5x6BqqQB3CJZg8KmW-YIyQ-yjKZ1ll4AgSAvE-zx6qyrxVWN3od7E/exec';
+
+  /* ---------- Durum ---------- */
+  const $ = function (id) { return document.getElementById(id); };
+  const stage = $('stage'), img = $('page'), ink = $('ink'), live = $('live');
+  const ictx = ink.getContext('2d'), lctx = live.getContext('2d');
+  const SIZES = [0.0016, 0.003, 0.0055];           // sayfa genişliğine oranla kalem kalınlığı
+  let key = '', book = null, pageNo = 1, aspect = 1.414;
+  let strokes = [], undoStack = [], redoStack = [], curT = 0, curDirty = false;
+  let tool = 'pen', color = '#1557c0', size = 1, fingerDraw = false;
+  let view = { k: 1, x: 0, y: 0 };                 // k: sayfa genişliğinin ekrandaki piksel karşılığı
+  let rect = { left: 0, top: 0, width: 1, height: 1 }, dpr = 1, fitK = 1;
+
+  function pref(k, val) {
+    try {
+      if (val === undefined) return localStorage.getItem('cizim.' + k);
+      if (val === null) localStorage.removeItem('cizim.' + k); else localStorage.setItem('cizim.' + k, val);
+    } catch (e) { return null; }
+  }
+
+  /* ---------- Sunucu ---------- */
+  async function api(body) {
+    body.key = key;
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error('Sunucu hatası (' + r.status + ')');
+    const j = await r.json();
+    if (!j.ok) { const e = new Error(j.error || 'Bilinmeyen hata'); e.code = j.error; throw e; }
+    return j;
+  }
+
+  /* ---------- Kalıcı saklama (IndexedDB, olmazsa bellek) ---------- */
+  // pages:   "<kitap>/<sayfa>" -> { b: ArrayBuffer, type }      (sayfa görselleri)
+  // strokes: "<kitap>/<sayfa>" -> { s: [...], t: ms, d: 0|1 }    (çizimler; d=1: Drive'a yedeklenmedi)
+  // meta:    "books" -> kitap listesi, "last/<kitap>" -> son açılan sayfa
+  let db = null; const mem = { pages: new Map(), strokes: new Map(), meta: new Map() };
+  function openDB() {
+    return new Promise(function (res) {
+      try {
+        const r = indexedDB.open('cizim', 1);
+        r.onupgradeneeded = function () { ['pages', 'strokes', 'meta'].forEach(function (s) { r.result.createObjectStore(s); }); };
+        r.onsuccess = function () { res(r.result); };
+        r.onerror = r.onblocked = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+  }
+  function idbGet(store, k) {
+    return new Promise(function (res) {
+      if (!db) return res(mem[store].get(k));
+      try {
+        const rq = db.transaction(store).objectStore(store).get(k);
+        rq.onsuccess = function () { res(rq.result); };
+        rq.onerror = function () { res(mem[store].get(k)); };
+      } catch (e) { res(mem[store].get(k)); }
+    });
+  }
+  function idbPut(store, k, val) {
+    return new Promise(function (res) {
+      if (store !== 'pages') mem[store].set(k, val);
+      if (!db) { if (store === 'pages') mem.pages.set(k, val); return res(false); }
+      try {
+        const tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).put(val, k);
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = tx.onabort = function () { res(false); };
+      } catch (e) { res(false); }
+    });
+  }
+  function idbDirtyKeys() {
+    return new Promise(function (res) {
+      const out = [];
+      if (!db) { mem.strokes.forEach(function (v, k) { if (v.d) out.push(k); }); return res(out); }
+      try {
+        const rq = db.transaction('strokes').objectStore('strokes').openCursor();
+        rq.onsuccess = function () {
+          const c = rq.result; if (!c) return res(out);
+          if (c.value && c.value.d) out.push(c.key); c.continue();
+        };
+        rq.onerror = function () { res(out); };
+      } catch (e) { res(out); }
+    });
+  }
+
+  /* ---------- Drive yedeği ---------- */
+  const dirty = new Set(); let syncing = false, syncTimer = 0, localOk = true;
+  function setStatus() {
+    const s = $('status');
+    s.textContent = !localOk ? 'Kalıcı kayıt yok' : dirty.size ? 'Kaydedildi ✓ · yedek bekliyor' : 'Kaydedildi ✓ · yedeklendi';
+    s.classList.toggle('warn', !localOk);
+  }
+  function scheduleSync(ms) { clearTimeout(syncTimer); syncTimer = setTimeout(syncNow, ms || 2500); }
+  async function syncNow() {
+    if (syncing || !key || !dirty.size) return;
+    syncing = true;
+    const keys = Array.from(dirty);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i], rec = await idbGet('strokes', k);
+      if (!rec || !rec.d) { dirty.delete(k); continue; }
+      const cut = k.indexOf('/');
+      try {
+        await api({ action: 'saveDrawing', book: k.slice(0, cut), n: +k.slice(cut + 1), data: JSON.stringify(rec.s), t: rec.t });
+      } catch (e) { break; }                       // çevrimdışı ya da hata: sonra yeniden dene
+      const now = await idbGet('strokes', k);
+      if (now && now.t === rec.t) {
+        now.d = 0; await idbPut('strokes', k, now); dirty.delete(k);
+        if (book && k === book.id + '/' + pageNo && curT === rec.t) curDirty = false;
+      }
+    }
+    syncing = false; setStatus();
+    if (dirty.size) scheduleSync(30000);
+  }
+  window.addEventListener('online', function () { scheduleSync(500); });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) { clearTimeout(syncTimer); syncNow(); } });
+
+  function saveStrokes() {
+    const k = book.id + '/' + pageNo;
+    curT = Date.now(); curDirty = true;
+    dirty.add(k); setStatus();
+    idbPut('strokes', k, { s: strokes.slice(), t: curT, d: 1 }).then(function (ok) { localOk = ok; setStatus(); });
+    scheduleSync();
+  }
+
+  /* ---------- Sayfa görselleri: bellek -> IndexedDB -> sunucu ---------- */
+  const urls = new Map(), pending = new Map();
+  function b64ToBuffer(b64) {
+    const bin = atob(b64), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return u8.buffer;
+  }
+  function pageUrl(bookId, n) {
+    const k = bookId + '/' + n;
+    if (urls.has(k)) { const u = urls.get(k); urls.delete(k); urls.set(k, u); return Promise.resolve(u); }
+    if (pending.has(k)) return pending.get(k);
+    const p = (async function () {
+      let rec = await idbGet('pages', k);
+      if (!rec) {
+        const j = await api({ action: 'page', book: bookId, n: n });
+        rec = { b: b64ToBuffer(j.data), type: j.type || 'image/jpeg' };
+        await idbPut('pages', k, rec);
+      }
+      const u = URL.createObjectURL(new Blob([rec.b], { type: rec.type }));
+      urls.set(k, u);
+      while (urls.size > 8) {                       // eski adresleri bırak
+        const old = urls.keys().next().value;
+        if (book && old === book.id + '/' + pageNo) { const cu = urls.get(old); urls.delete(old); urls.set(old, cu); continue; }
+        URL.revokeObjectURL(urls.get(old)); urls.delete(old);
+      }
+      return u;
+    })();
+    pending.set(k, p);
+    p.then(function () { pending.delete(k); }, function () { pending.delete(k); });
+    return p;
+  }
+  function prefetch(n) {
+    if (book && n >= 1 && n <= book.pages) pageUrl(book.id, n).catch(function () {});
+  }
+
+  /* ---------- Görünüm ---------- */
+  function measure() {
+    const r = stage.getBoundingClientRect();
+    rect = { left: r.left, top: r.top, width: r.width, height: r.height };
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+    [ink, live].forEach(function (c) { if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } });
+    fitK = Math.max(100, Math.min(r.width - 24, 1100));
+  }
+  function fitView() {
+    view.k = fitK; view.x = (rect.width - fitK) / 2; view.y = 12;
+    clampView(); requestRender();
+  }
+  function clampView() {
+    const minK = Math.min(fitK, (rect.height - 24) / aspect) * 0.8, maxK = fitK * 6;
+    view.k = Math.max(minK, Math.min(maxK, view.k));
+    const pw = view.k, ph = view.k * aspect, m = 12;
+    view.x = pw + 2 * m <= rect.width ? (rect.width - pw) / 2 : Math.max(rect.width - pw - m, Math.min(m, view.x));
+    view.y = ph + 2 * m <= rect.height ? (rect.height - ph) / 2 : Math.max(rect.height - ph - m, Math.min(m, view.y));
+  }
+
+  /* ---------- Çizim ---------- */
+  function setTx(ctx) {
+    ctx.setTransform(dpr * view.k, 0, 0, dpr * view.k, dpr * view.x, dpr * view.y);
+  }
+  function clearCtx(ctx, c) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height); }
+
+  function drawStroke(ctx, s) {
+    const p = s.p, n = p.length / 3;
+    if (!n) return;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = ctx.fillStyle = s.c;
+    if (s.t === 'hl') {
+      ctx.globalAlpha = 0.35; ctx.lineWidth = s.w; ctx.beginPath(); ctx.moveTo(p[0], p[1]);
+      if (n === 1) ctx.lineTo(p[0] + 1e-5, p[1]);
+      for (let i = 1; i < n - 1; i++)
+        ctx.quadraticCurveTo(p[3 * i], p[3 * i + 1], (p[3 * i] + p[3 * i + 3]) / 2, (p[3 * i + 1] + p[3 * i + 4]) / 2);
+      if (n > 1) ctx.lineTo(p[3 * n - 3], p[3 * n - 2]);
+      ctx.stroke(); ctx.globalAlpha = 1; return;
+    }
+    const wf = function (i) { return s.w * (0.55 + 0.9 * p[3 * i + 2]); };
+    if (n === 1) { ctx.beginPath(); ctx.arc(p[0], p[1], wf(0) / 2, 0, 6.2832); ctx.fill(); return; }
+    let ax = p[0], ay = p[1];
+    for (let i = 1; i < n - 1; i++) {
+      const mx = (p[3 * i] + p[3 * i + 3]) / 2, my = (p[3 * i + 1] + p[3 * i + 4]) / 2;
+      ctx.lineWidth = wf(i); ctx.beginPath(); ctx.moveTo(ax, ay);
+      ctx.quadraticCurveTo(p[3 * i], p[3 * i + 1], mx, my); ctx.stroke();
+      ax = mx; ay = my;
+    }
+    ctx.lineWidth = wf(n - 1); ctx.beginPath(); ctx.moveTo(ax, ay);
+    ctx.lineTo(p[3 * n - 3], p[3 * n - 2]); ctx.stroke();
+  }
+
+  let renderQueued = false, liveQueued = false;
+  function requestRender() {
+    if (renderQueued) return; renderQueued = true;
+    requestAnimationFrame(function () {
+      renderQueued = false;
+      img.style.width = view.k + 'px'; img.style.height = view.k * aspect + 'px';
+      img.style.transform = 'translate(' + view.x + 'px,' + view.y + 'px)';
+      clearCtx(ictx, ink); setTx(ictx);
+      for (let i = 0; i < strokes.length; i++) drawStroke(ictx, strokes[i]);
+      renderLive();
+    });
+  }
+  function requestLive() {
+    if (liveQueued) return; liveQueued = true;
+    requestAnimationFrame(function () { liveQueued = false; renderLive(); });
+  }
+  function renderLive() {
+    clearCtx(lctx, live);
+    if (draw && draw.stroke) { setTx(lctx); drawStroke(lctx, draw.stroke); }
+  }
+
+  /* ---------- Silgi ---------- */
+  function segDist2(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    let t = l2 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const qx = ax + t * dx - px, qy = ay + t * dy - py;
+    return qx * qx + qy * qy;
+  }
+  function hits(s, x, y, r) {
+    const p = s.p, n = p.length / 3, rr = (r + s.w / 2) * (r + s.w / 2);
+    if (n === 1) return segDist2(x, y, p[0], p[1], p[0], p[1]) <= rr;
+    for (let i = 1; i < n; i++)
+      if (segDist2(x, y, p[3 * i - 3], p[3 * i - 2], p[3 * i], p[3 * i + 1]) <= rr) return true;
+    return false;
+  }
+
+  /* ---------- Geri al / yinele ---------- */
+  function commit(before) {
+    undoStack.push({ before: before, after: strokes.slice() });
+    if (undoStack.length > 200) undoStack.shift();
+    redoStack.length = 0; saveStrokes(); syncButtons();
+  }
+  function undo() {
+    const a = undoStack.pop(); if (!a) return;
+    redoStack.push(a); strokes = a.before.slice(); saveStrokes(); syncButtons(); requestRender();
+  }
+  function redo() {
+    const a = redoStack.pop(); if (!a) return;
+    undoStack.push(a); strokes = a.after.slice(); saveStrokes(); syncButtons(); requestRender();
+  }
+
+  /* ---------- Dokunma / kalem girişi ---------- */
+  const touches = new Map();          // parmaklar: id -> {x, y, ignored}
+  let draw = null, gesture = null, lastPen = -1e9;
+
+  function pos(e) { return { x: e.clientX - rect.left, y: e.clientY - rect.top }; }
+  function activeTouches() {
+    const a = []; touches.forEach(function (t) { if (!t.ignored) a.push(t); }); return a;
+  }
+  function startGesture() {
+    const pts = activeTouches();
+    if (!pts.length) { gesture = null; return; }
+    let cx = 0, cy = 0; pts.forEach(function (t) { cx += t.x; cy += t.y; });
+    cx /= pts.length; cy /= pts.length;
+    const d = pts.length >= 2 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0;
+    gesture = { cx: cx, cy: cy, d: d, n: pts.length, v: { k: view.k, x: view.x, y: view.y } };
+  }
+  function moveGesture() {
+    const pts = activeTouches();
+    if (!gesture || pts.length !== gesture.n) return startGesture();
+    let cx = 0, cy = 0; pts.forEach(function (t) { cx += t.x; cy += t.y; });
+    cx /= pts.length; cy /= pts.length;
+    const g = gesture.v, px = (gesture.cx - g.x) / g.k, py = (gesture.cy - g.y) / g.k;
+    let k = g.k;
+    if (gesture.d > 0) k = g.k * Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) / gesture.d;
+    view.k = k; clampView();
+    view.x = cx - px * view.k; view.y = cy - py * view.k; clampView();
+    requestRender();
+  }
+
+  function beginDraw(e) {
+    const before = strokes.slice();
+    if (tool === 'eraser') draw = { id: e.pointerId, type: e.pointerType, erase: true, changed: false, before: before };
+    else {
+      const hl = tool === 'hl';
+      draw = { id: e.pointerId, type: e.pointerType, before: before, stroke: {
+        t: hl ? 'hl' : 'pen', c: hl && color === '#1b1b1b' ? '#ffd400' : color,
+        w: SIZES[size] * (hl ? 7 : 1), p: [] } };
+    }
+    addPoint(e);
+    $('hint').classList.add('hide');
+  }
+  function addPoint(e) {
+    const x = (e.clientX - rect.left - view.x) / view.k, y = (e.clientY - rect.top - view.y) / view.k;
+    if (draw.erase) {
+      const r = 14 / view.k, keep = strokes.filter(function (s) { return !hits(s, x, y, r); });
+      if (keep.length !== strokes.length) { strokes = keep; draw.changed = true; requestRender(); }
+      return;
+    }
+    const p = draw.stroke.p, n = p.length;
+    if (n && p[n - 3] === x && p[n - 2] === y) return;
+    p.push(x, y, draw.type === 'pen' ? (e.pressure || 0.5) : 0.5);
+    requestLive();
+  }
+  function endDraw() {
+    const d = draw; draw = null;
+    if (d.erase) { if (d.changed) commit(d.before); return; }
+    const p = d.stroke.p;
+    if (p.length >= 3) {
+      for (let i = 0; i < p.length; i++) p[i] = Math.round(p[i] * (i % 3 === 2 ? 100 : 1e5)) / (i % 3 === 2 ? 100 : 1e5);
+      strokes.push(d.stroke); commit(d.before);
+    }
+    requestRender();
+  }
+  function cancelDraw() {
+    if (draw && draw.erase && draw.changed) strokes = draw.before;
+    draw = null; requestRender();
+  }
+
+  stage.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    const pt = e.pointerType;
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    if (pt === 'touch') {
+      // Kalem yazarken ya da hemen ardından gelen dokunuşlar avuç içidir: yok say.
+      const ignored = !fingerDraw && ((draw && draw.type === 'pen') || performance.now() - lastPen < 400);
+      const t = pos(e); t.ignored = ignored; touches.set(e.pointerId, t);
+      if (ignored) return;
+      if (fingerDraw) {
+        if (draw && draw.type === 'touch') { cancelDraw(); startGesture(); return; }
+        if (!draw && activeTouches().length === 1) { beginDraw(e); return; }
+        if (draw) return;
+      }
+      startGesture();
+      return;
+    }
+    if (pt === 'mouse' && e.button !== 0) return;
+    if (draw) { if (draw.type === 'touch' && pt === 'pen') cancelDraw(); else return; }
+    if (pt === 'pen') {
+      lastPen = performance.now(); gesture = null;
+      touches.forEach(function (t) { t.ignored = true; });
+    }
+    beginDraw(e);
+  });
+
+  stage.addEventListener('pointermove', function (e) {
+    if (draw && e.pointerId === draw.id) {
+      const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+      if (evs.length) evs.forEach(addPoint); else addPoint(e);
+      if (e.pointerType === 'pen') lastPen = performance.now();
+      return;
+    }
+    if (e.pointerType !== 'touch') return;
+    const t = touches.get(e.pointerId); if (!t) return;
+    const p = pos(e); t.x = p.x; t.y = p.y;
+    if (t.ignored || draw) return;
+    moveGesture();
+  });
+
+  function pointerEnd(e) {
+    if (draw && e.pointerId === draw.id) {
+      if (e.pointerType === 'pen') lastPen = performance.now();
+      endDraw();
+    }
+    if (touches.delete(e.pointerId)) startGesture();
+  }
+  stage.addEventListener('pointerup', pointerEnd);
+  stage.addEventListener('pointercancel', pointerEnd);
+  stage.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
+  stage.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+
+  stage.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      const p = pos(e), px = (p.x - view.x) / view.k, py = (p.y - view.y) / view.k;
+      view.k *= Math.exp(-e.deltaY * 0.01); clampView();
+      view.x = p.x - px * view.k; view.y = p.y - py * view.k;
+    } else { view.x -= e.deltaX; view.y -= e.deltaY; }
+    clampView(); requestRender();
+  }, { passive: false });
+
+
+  /* ---------- Sayfa geçişi ---------- */
+  let loadToken = 0, remoteIdx = null;
+  function showLoading(text, canRetry) {
+    $('loading').hidden = !text; $('loadText').textContent = text || ''; $('retry').hidden = !canRetry;
+  }
+  async function goPage(n) {
+    if (draw) cancelDraw();
+    n = Math.max(1, Math.min(book.pages, parseInt(n, 10) || 1));
+    pageNo = n;
+    const token = ++loadToken, k = book.id + '/' + n, b = book;
+    strokes = []; undoStack = []; redoStack = []; curT = 0; curDirty = false;
+    idbPut('meta', 'last/' + b.id, n);
+    $('pageNo').value = n; syncButtons();
+    img.style.visibility = 'hidden'; showLoading('Sayfa yükleniyor…'); requestRender();
+
+    idbGet('strokes', k).then(function (rec) {
+      if (token !== loadToken) return;
+      if (rec) { strokes = rec.s.slice(); curT = rec.t; curDirty = !!rec.d; }
+      syncButtons(); requestRender(); checkRemote();
+    });
+    try {
+      const u = await pageUrl(b.id, n);
+      if (token !== loadToken) return;
+      img.onload = function () {
+        if (token !== loadToken) return;
+        aspect = img.naturalHeight / img.naturalWidth || aspect;
+        img.style.visibility = ''; showLoading(''); fitView();
+        prefetch(n + 1); prefetch(n + 2);
+      };
+      img.onerror = function () { if (token === loadToken) showLoading('Sayfa görseli açılamadı.', true); };
+      img.src = u;
+    } catch (e) {
+      if (token !== loadToken) return;
+      if (e.code === 'auth') return logout('Şifre değişmiş görünüyor. Yeniden giriş yap.');
+      showLoading(navigator.onLine === false ? 'Bu sayfa henüz indirilmemiş ve internet yok.' : 'Sayfa yüklenemedi: ' + e.message, true);
+    }
+  }
+  /* Drive'daki çizim bu cihazdakinden yeniyse (ör. veriler silindiyse) onu geri yükler. */
+  async function checkRemote() {
+    const token = loadToken, n = pageNo, b = book;
+    if (!remoteIdx || !remoteIdx[n] || remoteIdx[n] <= curT || curDirty) return;
+    try {
+      const j = await api({ action: 'drawing', book: b.id, n: n });
+      if (token !== loadToken || !j.data || curDirty || undoStack.length) return;
+      strokes = JSON.parse(j.data); curT = j.t || remoteIdx[n];
+      await idbPut('strokes', b.id + '/' + n, { s: strokes.slice(), t: curT, d: 0 });
+      syncButtons(); requestRender();
+    } catch (e) {}
+  }
+
+  /* ---------- Araç çubuğu ---------- */
+  function syncButtons() {
+    document.querySelectorAll('#tools button').forEach(function (b) { b.classList.toggle('on', b.dataset.tool === tool); });
+    document.querySelectorAll('#colors button').forEach(function (b) { b.classList.toggle('on', b.dataset.color === color); });
+    document.querySelectorAll('#sizes button').forEach(function (b) { b.classList.toggle('on', +b.dataset.size === size); });
+    $('finger').classList.toggle('on', fingerDraw);
+    $('undo').disabled = !undoStack.length; $('redo').disabled = !redoStack.length;
+    $('clear').disabled = !strokes.length;
+    $('prev').disabled = !book || pageNo <= 1; $('next').disabled = !book || pageNo >= book.pages;
+  }
+  $('tools').addEventListener('click', function (e) {
+    const b = e.target.closest('button'); if (!b) return;
+    tool = b.dataset.tool; pref('tool', tool); syncButtons();
+  });
+  $('colors').addEventListener('click', function (e) {
+    const b = e.target.closest('button'); if (!b) return;
+    color = b.dataset.color; pref('color', color);
+    if (tool === 'eraser') tool = 'pen';
+    syncButtons();
+  });
+  $('sizes').addEventListener('click', function (e) {
+    const b = e.target.closest('button'); if (!b) return;
+    size = +b.dataset.size; pref('size', String(size)); syncButtons();
+  });
+  $('undo').onclick = undo; $('redo').onclick = redo;
+  $('clear').onclick = function () {
+    if (!strokes.length) return;
+    const before = strokes.slice(); strokes = []; commit(before); requestRender();
+  };
+  $('fit').onclick = fitView;
+  $('finger').onclick = function () { fingerDraw = !fingerDraw; pref('finger', fingerDraw ? '1' : '0'); syncButtons(); };
+  $('prev').onclick = function () { goPage(pageNo - 1); };
+  $('next').onclick = function () { goPage(pageNo + 1); };
+  $('pageNo').addEventListener('change', function () { $('pageNo').blur(); goPage($('pageNo').value); });
+  $('pageNo').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('pageNo').blur(); });
+  $('retry').onclick = function () { goPage(pageNo); };
+  $('back').onclick = function () { clearTimeout(syncTimer); syncNow(); showLibrary(); };
+
+  /* ---------- Ekranlar ---------- */
+  function show(id) { ['login', 'library', 'app'].forEach(function (s) { $(s).hidden = s !== id; }); }
+
+  function logout(msg) {
+    key = ''; pref('key', null); book = null;
+    $('keyInput').value = ''; $('loginNote').textContent = msg || ''; $('loginNote').className = 'note' + (msg ? ' err' : '');
+    show('login');
+  }
+  $('loginBtn').onclick = async function () {
+    key = $('keyInput').value.trim();
+    const note = $('loginNote'); note.className = 'note'; note.textContent = 'Bağlanılıyor…';
+    try {
+      await api({ action: 'login' });
+      pref('key', key); note.textContent = ''; showLibrary();
+    } catch (e) {
+      note.className = 'note err';
+      note.textContent = e.code === 'auth' ? 'Şifre yanlış.' : 'Bağlanılamadı. İnternetini kontrol et.';
+      key = '';
+    }
+  };
+  $('keyInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('loginBtn').click(); });
+  $('logout').onclick = function () { logout(); };
+
+  async function renderBooks(list) {
+    const grid = $('bookGrid'); grid.textContent = '';
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i], last = await idbGet('meta', 'last/' + b.id);
+      const btn = document.createElement('button'); btn.className = 'book';
+      const t = document.createElement('b'); t.textContent = b.name;
+      const s = document.createElement('span');
+      s.textContent = b.pages + ' sayfa' + (last ? ' · kaldığın sayfa: ' + last : '');
+      btn.appendChild(t); btn.appendChild(s);
+      btn.onclick = function () { openBook(b); };
+      grid.appendChild(btn);
+    }
+  }
+  async function showLibrary() {
+    book = null; show('library');
+    const note = $('libNote'); note.className = 'note'; note.textContent = '';
+    const cached = await idbGet('meta', 'books');
+    if (cached) await renderBooks(cached); else note.textContent = 'Kitaplar yükleniyor…';
+    try {
+      const j = await api({ action: 'books' });
+      await idbPut('meta', 'books', j.books);
+      if (!book) { await renderBooks(j.books); note.textContent = j.books.length ? '' : 'Henüz hazırlanmış kitap yok.'; }
+    } catch (e) {
+      if (e.code === 'auth') return logout('Şifre değişmiş görünüyor. Yeniden giriş yap.');
+      note.textContent = cached ? 'İnternet yok: daha önce açtığın sayfalar kullanılabilir.' : 'Kitap listesi alınamadı. İnternetini kontrol et.';
+    }
+  }
+  async function openBook(b) {
+    book = b; remoteIdx = null;
+    if (b.w && b.h) aspect = b.h / b.w;
+    $('pageCount').textContent = '/ ' + b.pages; $('pageNo').max = b.pages;
+    show('app'); measure(); setStatus();
+    if (!pref('hintSeen')) {
+      $('hint').classList.remove('hide'); pref('hintSeen', '1');
+      setTimeout(function () { $('hint').classList.add('hide'); }, 6000);
+    }
+    goPage((await idbGet('meta', 'last/' + b.id)) || 1);
+    try {
+      const j = await api({ action: 'drawingIndex', book: b.id });
+      if (book === b) { remoteIdx = j.pages || {}; checkRemote(); }
+    } catch (e) {}
+  }
+
+  /* ---------- Başlat ---------- */
+  function onResize() { if ($('app').hidden) return; measure(); clampView(); requestRender(); }
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', function () {
+    setTimeout(function () { if (!$('app').hidden) { measure(); fitView(); } }, 250);
+  });
+
+  const pt = pref('tool'), pc = pref('color'), ps = pref('size');
+  if (pt === 'pen' || pt === 'hl' || pt === 'eraser') tool = pt;
+  if (pc && document.querySelector('#colors [data-color="' + pc + '"]')) color = pc;
+  if (ps === '0' || ps === '1' || ps === '2') size = +ps;
+  fingerDraw = pref('finger') === '1';
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+
+  openDB().then(async function (d) {
+    db = d; localOk = !!db;
+    (await idbDirtyKeys()).forEach(function (k) { dirty.add(k); });
+    if (dirty.size) scheduleSync(1500);
+    key = pref('key') || '';
+    if (key) showLibrary(); else show('login');
+  });
+})();
+</script>
+</body>
+</html>
