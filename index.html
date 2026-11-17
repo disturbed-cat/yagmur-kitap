@@ -1201,7 +1201,7 @@ app.addEventListener("focusin",e=>{const h=e.target.closest?.("[data-tip]");if(h
 app.addEventListener("focusout",()=>tipEl.hidden=true);
 function vLogin(){
   return `<section class="panel" style="max-width:420px;margin:24px auto;display:grid;gap:14px"><div><div class="eyebrow">Giriş</div><h2 style="margin-top:4px">Şifreyi girin</h2><p class="small muted" style="margin:6px 0 0">Bu siteye yalnızca şifreyi bilenler girebilir.</p></div>
-  <form id="loginForm" style="display:grid;gap:10px"><input type="password" id="pwIn" autocomplete="current-password" placeholder="Şifre" required>${S.loginErr?`<div class="small" style="color:var(--bad)">${esc(S.loginErr)}</div>`:""}<button class="btn pri" type="submit">Giriş yap</button></form></section>`;
+  <form id="loginForm" style="display:grid;gap:10px"><input type="password" id="pwIn" autocomplete="current-password" placeholder="Şifre" required>${S.loginErr?`<div class="small" style="color:var(--bad)">${esc(S.loginErr)}</div>`:""}<button class="btn pri" type="submit">Giriş yap</button></form><div style="border-top:1px solid var(--line);padding-top:14px;display:grid;gap:8px"><button class="btn" type="button" data-act="booksOnly">Yalnızca Kitaplarım'ı aç</button><span class="small muted">Kitaplar kendi şifresiyle (Apps Script'teki öğrenci şifresi) açılır.</span></div></section>`;
 }
 /* ---------- interactive study player ---------- */
 const playEl=document.getElementById("play");
@@ -1462,6 +1462,7 @@ function openTopicBody(acc){
   const t=topicsAgg().find(x=>x.key===k.slice(2));if(t)inner.innerHTML=calBody(t);
 }
 function render(){
+  if(S.login&&S.booksOnly&&S.tab==="kitap"){tipEl.hidden=true;app.innerHTML=`<div class="row"><button class="btn ghost small" type="button" data-act="backLogin">‹ Analiz girişi</button></div>`+BK.view();BK.mount();return}
   if(S.login){app.innerHTML=vLogin();$("#pwIn")?.focus();return}
   if(S.tab==="kitap"&&PW){tipEl.hidden=true;app.innerHTML=BK.view();BK.mount();return}
   if(!S.ready){app.innerHTML=`<div class="panel empty"><div class="spin" style="margin:0 auto 12px"></div><p>Kayıtlar yükleniyor…</p></div>`;return}
@@ -1557,8 +1558,8 @@ app.addEventListener("submit",async e=>{
     e.preventDefault();const pw=$("#pwIn").value;S.loginErr=null;
     try{const r=await fetch("/api/login",{method:"POST",headers:{"x-app-password":pw}});
       if(r.ok){PW=pw;try{localStorage.setItem("da_pw",pw)}catch(err){}S.login=false;S.ready=false;render();await boot()}
-      else{S.loginErr=r.status===401?"Şifre yanlış.":"Sunucu yanıt vermedi. Biraz sonra tekrar deneyin.";render()}}
-    catch(err){S.loginErr="Sunucuya ulaşılamadı.";render()}
+      else{S.loginErr=r.status===401?"Şifre yanlış.":(r.status===404||r.status===405)?`Bu adreste analiz sunucusu bulunamadı (hata ${r.status}). Analiz bölümü yalnızca kendi sunucusunun adresinde çalışır. Kitaplarım'ı aşağıdan açabilirsin.`:"Sunucu yanıt vermedi ("+r.status+"). Biraz sonra tekrar deneyin.";render()}}
+    catch(err){S.loginErr="Analiz sunucusuna ulaşılamadı. Kitaplarım'ı aşağıdan açabilirsin.";render()}
     return}
   if(e.target.id!=="stuForm")return;e.preventDefault();
   const name=$("#sName").value.trim();if(!name)return;
@@ -1572,6 +1573,8 @@ app.addEventListener("click",async e=>{
     tg.setAttribute("aria-expanded",op);op?S.open.add(k):S.open.delete(k);return}
   const go=e.target.closest("[data-tab-go]");if(go){switchTab(go.dataset.tabGo);return}
   const b=e.target.closest("[data-act]");if(!b)return;const a=b.dataset.act,id=b.dataset.id;
+  if(a==="booksOnly"){S.booksOnly=true;S.tab="kitap";render();return}
+  if(a==="backLogin"){S.booksOnly=false;render();return}
   if(a==="stop"){ctl?.abort();return}
   if(a==="play"){openPlayer(id,b.dataset.sec!=null?+b.dataset.sec:null);return}
   if(a==="figs"){checkFigures(id);return}
@@ -1641,7 +1644,7 @@ const B={key:pref("key")||"",books:null,note:"",loading:false,loaded:false,lastL
 const R={open:false,closing:false,book:null,page:0};
 
 function rerender(force){
-  if(S.tab!=="kitap"||S.login)return;
+  if(S.tab!=="kitap"||(S.login&&!S.booksOnly))return;
   if(!force&&document.activeElement&&document.activeElement.id==="bkKey")return;
   render();
 }
