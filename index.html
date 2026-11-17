@@ -1652,11 +1652,14 @@ function rerender(force){
 /* ---------- sunucu (Apps Script) ---------- */
 async function api(body){
   body.key=B.key;
-  let r;
-  try{r=await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)})}
-  catch(e){const er=new Error("network");er.code="network";throw er}
-  if(!r.ok){const er=new Error("Sunucu hatası ("+r.status+")");er.code="server";throw er}
-  const j=await r.json();
+  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),body.action==="page"?90000:45000);
+  let r,j;
+  try{r=await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body),signal:ctl.signal})}
+  catch(e){clearTimeout(tm);const er=new Error(e&&e.name==="AbortError"?"Google sunucusu zamanında yanıt vermedi.":"Google sunucusuna bağlanılamadı ("+(e&&e.message||e)+").");er.code=e&&e.name==="AbortError"?"timeout":"network";console.warn("[Kitaplarım]",body.action,e);throw er}
+  clearTimeout(tm);
+  if(!r.ok){const er=new Error("Google sunucusu hata verdi ("+r.status+").");er.code="server";console.warn("[Kitaplarım]",body.action,r.status);throw er}
+  try{j=await r.json()}catch(e){const er=new Error("Google sunucusundan beklenmeyen yanıt geldi. Apps Script dağıtımı \"Herkes\" erişimine açık mı?");er.code="server";console.warn("[Kitaplarım]",body.action,e);throw er}
+  if(!j.ok&&j.error!=="auth")console.warn("[Kitaplarım]",body.action,j.error);
   if(!j.ok){const er=new Error(j.error||"Bilinmeyen hata");er.code=j.error;throw er}
   return j;
 }
@@ -1673,6 +1676,7 @@ function db(){
       r.onupgradeneeded=()=>{STORES.forEach(s=>{if(!r.result.objectStoreNames.contains(s))r.result.createObjectStore(s)})};
       r.onsuccess=()=>res(r.result);
       r.onerror=r.onblocked=()=>res(null);
+      setTimeout(()=>{console.warn("[Kitaplarım] IndexedDB açılamadı, geçici belleğe geçildi");res(null)},4000);
     }catch(e){res(null)}
   }));
 }
@@ -1755,12 +1759,13 @@ function thumbUrl(bookId,n,tok){
 /* ---------- kitaplık ---------- */
 function loginHtml(){
   return `<section class="panel" style="max-width:440px;width:100%;margin:24px auto;display:grid;gap:14px">
-    <div><div class="eyebrow">Kitaplarım</div><h2 style="margin-top:4px">Kitaplık şifresi</h2><p class="small muted" style="margin:6px 0 0">Drive'daki kitaplarına ulaşmak için öğrenci şifreni bir kez gir.</p></div>
+    <div><div class="eyebrow">Kitaplarım</div><h2 style="margin-top:4px">Kitaplık şifresi</h2><p class="small muted" style="margin:6px 0 0">Drive'daki kitaplar için ayrı bir şifre gerekir: Google Apps Script'te belirlenen öğrenci şifresi. Bir kez girmen yeterli.</p></div>
     <form id="bkLogin" style="display:grid;gap:10px"><input type="password" id="bkKey" autocomplete="current-password" placeholder="Şifre" required>${B.loginErr?`<div class="small" style="color:var(--bad)">${esc(B.loginErr)}</div>`:""}<button class="btn pri" type="submit" ${B.logging?"disabled":""}>${B.logging?"Bağlanılıyor…":"Giriş yap"}</button></form></section>`;
 }
 function view(){
   if(!B.key)return loginHtml();
   const list=B.books,n=list?list.length:0;
+  if(!list&&B.loaded&&!B.loading)return `<section class="panel" style="display:grid;gap:12px"><div><div class="eyebrow">Kitaplarım</div><h2 style="margin-top:4px">Kitaplar alınamadı</h2></div><div class="notice small">${esc(B.note)}</div><div class="row"><button class="btn pri" type="button" data-bk="retry">Tekrar dene</button><button class="btn ghost" type="button" data-bk="relogin">Kitap şifresini yeniden gir</button></div></section>`;
   const sub=B.note||(list?"Bir kitaba dokun, kaldığın sayfadan devam et. Çözümlerin otomatik kaydedilir.":"Drive'daki kitapların getiriliyor.");
   const head=`<section class="panel bk-head"><div style="min-width:0;flex:1"><div class="eyebrow">Kitaplarım</div><h2 style="margin-top:4px">${list?(n?n+" kitap":"Henüz hazır kitap yok"):"Kitaplar yükleniyor…"}</h2><p class="small muted" style="margin:4px 0 0">${esc(sub)}</p></div>${B.note&&!B.loading?`<button class="btn" type="button" data-bk="retry">Yenile</button>`:""}</section>`;
   if(!list)return head+`<div class="bk-grid">${Array.from({length:6},(_,i)=>`<div class="bk-card is-skel" style="--i:${i}" aria-hidden="true"><span class="bk-cover skel"></span><span class="bk-info"><span class="skel-line skel"></span><span class="skel-line short skel"></span></span></div>`).join("")}</div>`;
@@ -1799,7 +1804,7 @@ async function loadBooks(){
   catch(e){
     B.loading=false;
     if(e.code==="auth")return logoutBooks("Şifre değişmiş görünüyor. Yeniden gir.");
-    B.note=B.books?"İnternete bağlanılamadı: daha önce açtığın sayfalar yine kullanılabilir.":"Kitap listesi alınamadı. İnternet bağlantını kontrol et.";
+    B.note=B.books?"Güncel liste alınamadı, kayıtlı liste gösteriliyor. "+e.message:e.message;
   }
   B.loading=false;B.loaded=true;rerender();
 }
@@ -1812,12 +1817,13 @@ document.addEventListener("submit",async e=>{
   const k=g("bkKey").value.trim();if(!k)return;
   B.key=k;B.logging=true;B.loginErr="";render();
   try{await api({action:"login"});pref("key",k);B.logging=false;B.loaded=false;B.books=null;render()}
-  catch(er){B.key="";B.logging=false;B.loginErr=er.code==="auth"?"Şifre yanlış.":"Bağlanılamadı. İnternetini kontrol et.";render()}
+  catch(er){B.key="";B.logging=false;B.loginErr=er.code==="auth"?"Şifre yanlış. Burada Apps Script'teki öğrenci şifresi kullanılır.":er.message;render()}
 });
 document.addEventListener("click",e=>{
   const b=e.target.closest("[data-bk]");if(!b)return;
   const a=b.dataset.bk;
   if(a==="open"){const bk=(B.books||[]).find(x=>x.id===b.dataset.id);if(bk)openBook(bk,b);return}
+  if(a==="relogin"){logoutBooks("");return}
   if(a==="retry"){B.loaded=false;B.note="";B.coverTried.clear();rerender(true);return}
 });
 
